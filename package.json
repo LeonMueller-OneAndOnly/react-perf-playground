@@ -1,0 +1,14 @@
+{
+  "name": "react-perf-playground",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "node benchmark.mjs"
+  },
+  "dependencies": {
+    "jsdom": "^26.0.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  }
+}
