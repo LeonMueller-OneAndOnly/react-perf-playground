@@ -45,8 +45,30 @@ Run benchmark:
 npm run bench
 ```
 
+Run real-browser benchmark (headless Chromium):
+
+```bash
+npm run bench:browser
+```
+
+This command executes `browser-benchmark.html` in headless Chromium and prints a parsed CLI table.
+
+Browser benchmark design (more realistic):
+
+- Uses a real renderer/compositor (Chromium headless).
+- Runs three scenarios: `100`, `500`, and `1000` moving elements.
+- Every measured frame updates all elements.
+- Current browser config in `browser-benchmark.html`:
+  - `warmupFrames = 60`
+  - `measureFrames = 360`
+  - `updatesPerFrame = 6`
+- Captures both:
+  - React update/commit time (`flushSync` render timing)
+  - Frame interval timing (`requestAnimationFrame` deltas)
+- Reports frame jank share (`Frames >16.7ms`).
+
 ## Notes
 
-- This benchmark runs in Node.js using `jsdom`, not a real browser rendering pipeline.
-- Use it for relative directional comparison, not absolute production timing.
-- For final decisions, validate in Chrome/Firefox/Safari with React Profiler or browser `performance` traces.
+- `npm run bench` runs in Node.js using `jsdom`.
+- `npm run bench:browser` runs in a real Chromium renderer (headless) and is more realistic than jsdom.
+- For final decisions across users/devices, still validate in full Chrome/Firefox/Safari with DevTools Performance and React Profiler.

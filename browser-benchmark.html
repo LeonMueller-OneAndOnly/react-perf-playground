@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>React Browser Benchmark</title>
+  <style>
+    :root {
+      --bg: #f3efe2;
+      --panel: #fffaf0;
+      --ink: #2d2617;
+      --line: #99835a;
+      --accent: #705928;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "URW Palladio L", serif;
+      background:
+        radial-gradient(circle at 15% 0%, #faf7ef 0%, #efe8d6 55%, #e5dbc5 100%),
+        linear-gradient(135deg, #efe8d6, #e7dcc3);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.6rem;
+    }
+
+    p {
+      margin: 0 0 10px;
+      max-width: 1000px;
+    }
+
+    #status {
+      margin: 10px 0 14px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      max-width: 1120px;
+      background: color-mix(in oklab, var(--panel) 92%, white 8%);
+      border: 1px solid color-mix(in oklab, var(--line) 55%, black 10%);
+      box-shadow: 0 10px 28px rgba(58, 43, 19, 0.14);
+      margin-top: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid color-mix(in oklab, var(--line) 45%, white 15%);
+      padding: 7px 9px;
+      text-align: left;
+      font-size: 0.88rem;
+    }
+
+    th {
+      background: color-mix(in oklab, #d9c89a 66%, white 34%);
+    }
+
+    .mono {
+      margin-top: 12px;
+      padding: 10px;
+      max-width: 1120px;
+      border: 1px solid color-mix(in oklab, var(--line) 45%, white 15%);
+      background: color-mix(in oklab, #fefaf0 80%, white 20%);
+      white-space: pre-wrap;
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      font-size: 0.86rem;
+    }
+
+    #playground {
+      position: relative;
+      width: 1000px;
+      height: 620px;
+      overflow: hidden;
+      border: 1px solid color-mix(in oklab, var(--line) 45%, white 15%);
+      margin-top: 14px;
+      background:
+        linear-gradient(transparent 31px, rgba(116, 99, 64, 0.08) 32px),
+        linear-gradient(90deg, transparent 31px, rgba(116, 99, 64, 0.08) 32px),
+        linear-gradient(180deg, rgba(255, 248, 228, 0.94), rgba(243, 234, 212, 0.94));
+      background-size: 32px 32px, 32px 32px, auto;
+      pointer-events: none;
+    }
+
+    .dot {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: color-mix(in oklab, #5e4921 82%, #d1b573 18%);
+      box-shadow: 0 0 0 0.5px rgba(65, 47, 17, 0.35);
+      will-change: transform;
+    }
+
+    #result-json {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>React Position Update Benchmark (Real Browser)</h1>
+  <p>Measures both commit cost and frame pacing in Chromium with multiple element counts.</p>
+  <p>Scenarios: 100, 500, 1000 moving elements. Each frame updates every element.</p>
+  <div id="status">Running...</div>
+
+  <table id="results-table" aria-label="Benchmark Results">
+    <thead>
+      <tr>
+        <th>Scenario</th>
+        <th>Rank</th>
+        <th>Variant</th>
+        <th>Mean commit</th>
+        <th>P95 commit</th>
+        <th>Mean frame</th>
+        <th>P95 frame</th>
+        <th>Frames &gt;16.7ms</th>
+        <th>Slower vs fastest</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="mono" id="notes"></div>
+  <div id="playground"></div>
+  <div id="result-json"></div>
+
+  <script type="module">
+    import React, { useLayoutEffect, useRef } from 'https://esm.sh/react@19.1.1'
+    import { createRoot } from 'https://esm.sh/react-dom@19.1.1/client'
+    import { flushSync } from 'https://esm.sh/react-dom@19.1.1'
+
+    const scenarios = [100, 500, 1000]
+    const warmupFrames = 60
+    const measureFrames = 360
+    const updatesPerFrame = 6
+
+    const variants = [
+      { id: 'A', name: 'A: inline style prop' },
+      { id: 'B', name: 'B: ref + useLayoutEffect' },
+      { id: 'C', name: 'C: callback ref' }
+    ]
+
+    function positionFor(index, tick) {
+      const x = (index * 23 + tick * 3) % 980
+      const y = (index * 29 + tick * 2) % 600
+      return { x, y }
+    }
+
+    function DotA({ x, y }) {
+      return React.createElement('div', {
+        className: 'dot',
+        style: { transform: `translate(${x}px, ${y}px)` }
+      })
+    }
+
+    function DotB({ x, y }) {
+      const ref = useRef(null)
+      useLayoutEffect(() => {
+        const elm = ref.current
+        if (!elm) return
+        elm.style.transform = `translate(${x}px, ${y}px)`
+      }, [x, y])
+      return React.createElement('div', { className: 'dot', ref })
+    }
+
+    function DotC({ x, y }) {
+      return React.createElement('div', {
+        className: 'dot',
+        ref: (elm) => {
+          if (elm) elm.style.transform = `translate(${x}px, ${y}px)`
+        }
+      })
+    }
+
+    const dotByVariant = {
+      A: DotA,
+      B: DotB,
+      C: DotC
+    }
+
+    function Scene({ variantId, count, tick }) {
+      const Dot = dotByVariant[variantId]
+      const children = []
+      for (let i = 0; i < count; i += 1) {
+        const { x, y } = positionFor(i, tick)
+        children.push(React.createElement(Dot, { key: i, x, y }))
+      }
+      return React.createElement(React.Fragment, null, children)
+    }
+
+    function stats(values) {
+      const sorted = [...values].sort((a, b) => a - b)
+      const n = sorted.length
+      const mean = sorted.reduce((acc, v) => acc + v, 0) / n
+      const p50 = sorted[Math.floor((n - 1) * 0.5)]
+      const p95 = sorted[Math.floor((n - 1) * 0.95)]
+      const min = sorted[0]
+      const max = sorted[n - 1]
+      return { mean, p50, p95, min, max }
+    }
+
+    function formatMs(v) {
+      return `${v.toFixed(3)} ms`
+    }
+
+    function nextFrame() {
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(performance.now()))
+      })
+    }
+
+    async function runScenarioVariant(root, variantId, count) {
+      let tick = 0
+      flushSync(() => {
+        root.render(React.createElement(Scene, { variantId, count, tick }))
+      })
+
+      for (let i = 0; i < warmupFrames; i += 1) {
+        await nextFrame()
+        tick += 1
+        flushSync(() => {
+          root.render(React.createElement(Scene, { variantId, count, tick }))
+        })
+      }
+
+      const commitTimes = []
+      const frameIntervals = []
+      let lastFrameTs = await nextFrame()
+
+      for (let i = 0; i < measureFrames; i += 1) {
+        const ts = await nextFrame()
+        frameIntervals.push(ts - lastFrameTs)
+        lastFrameTs = ts
+
+        let perFrameCommit = 0
+        for (let u = 0; u < updatesPerFrame; u += 1) {
+          tick += 1
+          const start = performance.now()
+          flushSync(() => {
+            root.render(React.createElement(Scene, { variantId, count, tick }))
+          })
+          perFrameCommit += performance.now() - start
+        }
+        commitTimes.push(perFrameCommit / updatesPerFrame)
+      }
+
+      const commitStats = stats(commitTimes)
+      const frameStats = stats(frameIntervals)
+      const jankPct = (frameIntervals.filter((v) => v > 16.7).length / frameIntervals.length) * 100
+
+      return {
+        variantId,
+        name: variants.find((v) => v.id === variantId).name,
+        count,
+        commit: commitStats,
+        frame: frameStats,
+        jankPct
+      }
+    }
+
+    function renderTable(rowsByScenario) {
+      const tbody = document.querySelector('#results-table tbody')
+      tbody.innerHTML = ''
+
+      for (const scenario of rowsByScenario) {
+        const fastest = scenario.results[0].commit.mean
+        scenario.results.forEach((r, idx) => {
+          const tr = document.createElement('tr')
+          const delta = fastest > 0 ? (r.commit.mean / fastest - 1) * 100 : 0
+          const slower = idx === 0 ? 'baseline' : `+${delta.toFixed(1)}%`
+          const cells = [
+            `${scenario.count} elements`,
+            String(idx + 1),
+            r.name,
+            formatMs(r.commit.mean),
+            formatMs(r.commit.p95),
+            formatMs(r.frame.mean),
+            formatMs(r.frame.p95),
+            `${r.jankPct.toFixed(1)}%`,
+            slower
+          ]
+          cells.forEach((value) => {
+            const td = document.createElement('td')
+            td.textContent = value
+            tr.appendChild(td)
+          })
+          tbody.appendChild(tr)
+        })
+      }
+    }
+
+    function flattenForJson(rowsByScenario) {
+      return rowsByScenario.map((scenario) => ({
+        count: scenario.count,
+        results: scenario.results.map((r) => ({
+          variantId: r.variantId,
+          name: r.name,
+          meanCommit: r.commit.mean,
+          p95Commit: r.commit.p95,
+          meanFrame: r.frame.mean,
+          p95Frame: r.frame.p95,
+          jankPct: r.jankPct
+        }))
+      }))
+    }
+
+    async function main() {
+      const host = document.getElementById('playground')
+      const root = createRoot(host)
+      const status = document.getElementById('status')
+
+      const rowsByScenario = []
+
+      for (let scenarioIndex = 0; scenarioIndex < scenarios.length; scenarioIndex += 1) {
+        const count = scenarios[scenarioIndex]
+        status.textContent = `Running scenario: ${count} elements...`
+        const scenarioResults = []
+        const orderedVariants = [...variants]
+        const rotate = scenarioIndex % orderedVariants.length
+        orderedVariants.push(...orderedVariants.splice(0, rotate))
+
+        for (const variant of orderedVariants) {
+          const result = await runScenarioVariant(root, variant.id, count)
+          scenarioResults.push(result)
+        }
+        scenarioResults.sort((a, b) => a.commit.mean - b.commit.mean)
+        rowsByScenario.push({ count, results: scenarioResults })
+      }
+
+      flushSync(() => {
+        root.unmount()
+      })
+
+      renderTable(rowsByScenario)
+      status.textContent = 'Done'
+
+      const winners = rowsByScenario
+        .map((s) => `${s.count}: ${s.results[0].name}`)
+        .join(' | ')
+
+      document.getElementById('notes').textContent =
+        `Warmup frames: ${warmupFrames}, measured frames: ${measureFrames}, updates/frame: ${updatesPerFrame}\n` +
+        `Winners by scenario -> ${winners}`
+
+      document.getElementById('result-json').textContent = JSON.stringify({
+        env: 'chromium-real-browser',
+        warmupFrames,
+        measureFrames,
+        updatesPerFrame,
+        scenarios: flattenForJson(rowsByScenario)
+      })
+    }
+
+    await main()
+  </script>
+</body>
+</html>

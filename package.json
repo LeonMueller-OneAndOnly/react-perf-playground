@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "bench": "node benchmark.mjs"
+    "bench": "node benchmark.mjs",
+    "bench:browser": "node bench-browser.mjs"
   },
   "dependencies": {
     "jsdom": "^26.0.0",
